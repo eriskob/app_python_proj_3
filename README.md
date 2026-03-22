@@ -163,3 +163,107 @@ docker compose up --build
 - `created_at` — дата создания;
 - `last_used_at` — дата последнего использования;
 - `expires_at` — срок действия ссылки.
+
+---
+## Тесты
+
+### Юнит-тесты
+
+#### Реализованы:
+
+- unit-тесты для проверки вспомогательной логики и отдельных веток обработки
+- функциональные API-тесты с использованием `pytest` и `httpx`
+- нагрузочное тестирование с использованием `Locust`
+
+Тесты находятся в папке tests/ на одном уровне с src/.
+
+#### Для запуска тестов: 
+
+Зависимости:
+
+```bash
+pip install pytest pytest-asyncio pytest-mock httpx coverage locust
+```
+
+Запуск тестов:
+
+Нужен файл .coveragerc со следующим содержанием:
+```bash
+[coverage:run]
+concurrency = greenlet, thread
+```
+
+Без него не считалось покрытие API-тестов.
+
+```bash
+PYTHONPATH=src pytest tests -v
+PYTHONPATH=src coverage run --source=src -m pytest tests
+coverage report -m
+```
+
+Уже готовый html отчет находится в `htmlcov/index.html`
+
+### Нагрузочное тестирование
+
+Поднять проект:
+
+```bash
+docker compose up -d --build
+```
+
+Закинуть в бд несколько коротких ссылок:
+
+```bash
+curl -X POST "http://localhost:8000/links/shorten" \
+  -H "Content-Type: application/json" \
+  -d '{"original_url":"https://example.com/1","custom_alias":"abc123"}'
+
+curl -X POST "http://localhost:8000/links/shorten" \
+  -H "Content-Type: application/json" \
+  -d '{"original_url":"https://example.com/2","custom_alias":"def456"}'
+
+curl -X POST "http://localhost:8000/links/shorten" \
+  -H "Content-Type: application/json" \
+  -d '{"original_url":"https://example.com/3","custom_alias":"ghi789"}'
+
+curl -X POST "http://localhost:8000/links/shorten" \
+  -H "Content-Type: application/json" \
+  -d '{"original_url":"https://example.com/4","custom_alias":"jkl012"}'
+
+curl -X POST "http://localhost:8000/links/shorten" \
+  -H "Content-Type: application/json" \
+  -d '{"original_url":"https://example.com/5","custom_alias":"mno345"}'
+
+curl -X POST "http://localhost:8000/links/shorten" \
+  -H "Content-Type: application/json" \
+  -d '{"original_url":"https://example.com/6","custom_alias":"pqr678"}'
+
+curl -X POST "http://localhost:8000/links/shorten" \
+  -H "Content-Type: application/json" \
+  -d '{"original_url":"https://example.com/7","custom_alias":"stu901"}'
+
+curl -X POST "http://localhost:8000/links/shorten" \
+  -H "Content-Type: application/json" \
+  -d '{"original_url":"https://example.com/8","custom_alias":"vwx234"}'
+```
+
+Запустить Locust:
+
+```bash
+locust -f locustfile.py --host=http://localhost:8000
+```
+
+Тестирование проводилось двумя запусками, первый - с предварительно очищенным кэшем Redis, второй без очищения кэша.
+
+```bash
+docker exec -it shortener-redis redis-cli FLUSHALL
+locust -f locustfiles.py --host=http://localhost:8000 --users 100 --spawn-rate 20 --run-time 1m
+```
+
+#### Отчеты по тестированию:
+ - Locust_1_locustfile.py_http___localhost_8000.html
+ - Locust_2_locustfile.py_http___localhost_8000.html
+
+#### Вывод:
+
+Во втором прогоне наблюдается улучшение почти по всем ключевым метрикам. Для GET /links/{short_code} среднее время ответа снизилось с 50.04 мс до 45.12 мс, а 95-й перцентиль — со 110 мс до 91 мс. Для GET /links/{short_code}/stats среднее время ответа снизилось с 35.11 мс до 31.53 мс, а 95-й перцентиль — с 91 мс до 79 мс. Общая пропускная способность также выросла: с 1994.82 RPS до 2189.87 RPS. Можно сделать вывод, что кэширование положительно влияет на производительность.

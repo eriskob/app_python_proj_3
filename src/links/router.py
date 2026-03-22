@@ -46,6 +46,14 @@ async def clear_link_cache(redis: Redis, short_code: str):
     await redis.delete(url_cache_key(short_code))
 
 
+def normalize_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 @router.post("/shorten")
 async def create_short_link(new_link: LinkCreate, request: Request, session: AsyncSession = Depends(get_async_session), user: Optional[User] = Depends(optional_current_user)):
     now = datetime.now(timezone.utc)
@@ -129,7 +137,8 @@ async def get_link_stats(
     if not link:
         raise HTTPException(status_code=404, detail="not found")
 
-    if link["expires_at"] and link["expires_at"] <= datetime.now(timezone.utc):
+    expires_at = normalize_utc(link["expires_at"])
+    if expires_at and expires_at <= datetime.now(timezone.utc):
         delete_query = delete(links).where(links.c.short_code == short_code)
         await session.execute(delete_query)
         await session.commit()
@@ -176,7 +185,8 @@ async def redirect_to_original_url(
     if not link:
         raise HTTPException(status_code=404, detail="not found")
 
-    if link["expires_at"] and link["expires_at"] <= now:
+    expires_at = normalize_utc(link["expires_at"])
+    if expires_at and expires_at <= now:
         delete_query = delete(links).where(links.c.short_code == short_code)
         await session.execute(delete_query)
         await session.commit()
